@@ -6,6 +6,12 @@ import { Card } from '@/components/ui/card';
 import { Plus, Trash2, CheckCircle, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+declare global {
+  interface Window {
+    __addClickToken?: symbol | null;
+  }
+}
+
 interface Task {
   id: string;
   text: string;
@@ -18,7 +24,16 @@ const Index = () => {
   const [newTask, setNewTask] = useState('');
   const [displayTotalCount, setDisplayTotalCount] = useState(0);
   const [displayCompletedCount, setDisplayCompletedCount] = useState(0);
-  const [addLocked, setAddLocked] = useState(false);
+  // Keep Add button always enabled; allow multiple handlers
+  const addButtonHandlersRef = useRef<Array<(e: React.MouseEvent<HTMLButtonElement>) => void>>([]);
+  const registerAddButtonHandler = (
+    handler: (e: React.MouseEvent<HTMLButtonElement>) => void,
+  ) => {
+    addButtonHandlersRef.current.push(handler);
+    return () => {
+      addButtonHandlersRef.current = addButtonHandlersRef.current.filter(h => h !== handler);
+    };
+  };
   const listRef = useRef<HTMLDivElement | null>(null);
   const leakRefs = useRef<{ handler: (e: Event) => void; data: string }[]>([]);
 
@@ -73,7 +88,12 @@ const Index = () => {
   const addTask = (text?: string, shouldClear: boolean = true) => {
     const taskText = text !== undefined ? text : newTask;
     const task: Task = {
-      id: Date.now().toString(),
+      id: (() => {
+        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+          return (crypto as Crypto).randomUUID();
+        }
+        return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      })(),
       text: taskText,
       completed: false,
       createdAt: new Date(),
@@ -137,12 +157,7 @@ const Index = () => {
   const totalCount = displayTotalCount;
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  // Lock the Add button once progress reaches 100% and never unlock
-  useEffect(() => {
-    if (percent === 100 && !addLocked) {
-      setAddLocked(true);
-    }
-  }, [percent, addLocked]);
+  // No locking behavior for the Add button
 
   return (
     <div className="min-h-screen py-8 bg-gray-50 px-4">
@@ -180,14 +195,24 @@ const Index = () => {
               className="flex-1"
             />
             <Button 
-              onClick={() => addTask()}
+              onClick={(e) => {
+                // Defer single-click add briefly to detect double-click; canceled if double-click fires
+                const clickToken = Symbol('single-click');
+                window.__addClickToken = clickToken;
+                setTimeout(() => {
+                  if (window.__addClickToken === clickToken) {
+                    addTask();
+                    addButtonHandlersRef.current.forEach(h => { try { h(e); } catch (_err) { /* noop */ } });
+                  }
+                }, 220);
+              }}
               onDoubleClick={() => {
+                window.__addClickToken = null;
                 const currentText = newTask;
                 addTask(currentText, false);
                 addTask(currentText, true);
               }}
               tabIndex={-1}
-              disabled={addLocked}
               className="px-6 h-12"
               variant="secondary"
             >
