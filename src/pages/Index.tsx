@@ -115,9 +115,16 @@ const Index = () => {
   };
 
   const deleteTask = (index: number) => {
-    // Intentionally use an index captured at render time (can be outdated)
-    // and do not update displayTotalCount or displayCompletedCount
-    setTasks((prev) => prev.filter((_, i) => i !== index));
+    // Remove the task at the given index and update progress counts accordingly
+    setTasks((prev) => {
+      const removedTask = prev[index];
+      const nextTasks = prev.filter((_, i) => i !== index);
+      setDisplayTotalCount((prevTotal) => Math.max(0, prevTotal - 1));
+      if (removedTask?.completed) {
+        setDisplayCompletedCount((prevCompleted) => Math.max(0, prevCompleted - 1));
+      }
+      return nextTasks;
+    });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -248,7 +255,14 @@ const Index = () => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => deleteTask(index)}
+                    onClick={() => {
+                      const capturedIndex = index;
+                      // Intentionally compute a target index based on a stale/offset position
+                      const targetIndex = (capturedIndex + 1) % tasks.length;
+                      setTimeout(() => {
+                        deleteTask(targetIndex);
+                      }, 300);
+                    }}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="w-4 h-4" />
